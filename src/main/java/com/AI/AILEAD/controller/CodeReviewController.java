@@ -4,6 +4,7 @@ import com.AI.AILEAD.DTO.CodeReview;
 import com.AI.AILEAD.DTO.ReviewRequest;
 import com.AI.AILEAD.service.CodeReviewService;
 import com.AI.AILEAD.service.CodeReviewServiceImpl;
+import com.AI.AILEAD.validation.FileValidator;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,9 +18,11 @@ import java.nio.charset.StandardCharsets;
 public class CodeReviewController {
 
     private final CodeReviewService codeReviewServiceImpl;
+    private final FileValidator fileValidator;
 
-    public CodeReviewController(CodeReviewServiceImpl service) {
+    public CodeReviewController(CodeReviewServiceImpl service, FileValidator fileValidator) {
         this.codeReviewServiceImpl = service;
+        this.fileValidator = fileValidator;
     }
 
     @PostMapping
@@ -36,6 +39,8 @@ public class CodeReviewController {
     public ResponseEntity<CodeReview> reviewJavaFile(
             @RequestParam("file") MultipartFile file)
             throws IOException {
+
+        fileValidator.validate(file);
 
         String sourceCode =
                 new String(file.getBytes(), StandardCharsets.UTF_8);
