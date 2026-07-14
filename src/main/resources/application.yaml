@@ -9,3 +9,11 @@ spring:
         chat:
           options:
             model: gemini-3.5-flash
+
+app:
+  upload:
+    max-file-size: 5MB
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{requestId}] %-5level %logger{36} - %msg%n"
