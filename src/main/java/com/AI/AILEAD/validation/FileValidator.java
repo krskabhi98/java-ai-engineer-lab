@@ -1,6 +1,6 @@
 package com.AI.AILEAD.validation;
 
-import com.AI.AILEAD.exception.InvalidFileException;
+import com.AI.AILEAD.exception.InvalidFileException.InvalidFileException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
