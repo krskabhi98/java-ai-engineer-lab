@@ -3,21 +3,22 @@ package com.AI.AILEAD.service;
 import com.AI.AILEAD.DTO.CodeReview;
 import com.AI.AILEAD.exception.InvalidFileException.AiServiceUnavailableException;
 import com.AI.AILEAD.prompt.CodeReviewPrompt;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-@Slf4j
+
 @Service
-@RequiredArgsConstructor
+//@RequiredArgsConstructor
 public class CodeReviewServiceImpl implements CodeReviewService {
 
+    private static final Logger log = LoggerFactory.getLogger(CodeReviewServiceImpl.class);
     private final ChatClient chatClient;
 
-//    public CodeReviewServiceImpl(ChatClient chatClient) {
-//        this.chatClient = chatClient;
-//    }
+    public CodeReviewServiceImpl(ChatClient chatClient) {
+        this.chatClient = chatClient;
+    }
 
     @Override
     public CodeReview review(String code) {
