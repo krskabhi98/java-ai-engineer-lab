@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 
 @Service
@@ -45,5 +46,24 @@ public class CodeReviewServiceImpl implements CodeReviewService {
             );
         }
 
+    }
+
+    @Override
+    public Flux<String> reviewStream(String sourceCode) {
+
+        Prompt prompt = promptService.buildCodeReviewPrompt(sourceCode);
+
+        return chatClient
+                .prompt(prompt)
+                .stream()
+                .content()
+                .doOnSubscribe(subscription ->
+                        log.info("AI streaming started."))
+                .doOnNext(token ->
+                        log.info("Received AI token = "+token))
+                .doOnComplete(() ->
+                        log.info("AI streaming completed."))
+                .doOnError(ex ->
+                        log.error("Streaming failed.", ex));
     }
 }
