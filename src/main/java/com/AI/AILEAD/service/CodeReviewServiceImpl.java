@@ -6,6 +6,7 @@ import com.AI.AILEAD.prompt.PromptService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +34,36 @@ public class CodeReviewServiceImpl implements CodeReviewService {
 
             CodeReview review = chatClient
                     .prompt(prompt)
+                    .call()
+                    .entity(CodeReview.class);
+
+            log.info("AI code review completed in {} ms", System.currentTimeMillis() - startTime);
+            return review ;
+        } catch (Exception ex) {
+            log.error("Error occurred while calling Gemini for code review: {}", ex.getMessage(), ex);
+            throw new AiServiceUnavailableException(
+                    "AI service is currently unavailable. Please try again later.", ex
+            );
+        }
+
+    }
+
+    @Override
+    public CodeReview review(String sourceCode, String conversationId) {
+        try {
+
+            long startTime = System.currentTimeMillis();
+            log.info("calling AI for code review conversationId");
+            Prompt prompt = promptService.buildCodeReviewPrompt(sourceCode);
+
+            CodeReview review = chatClient
+                    .prompt(prompt)
+                    .advisors(advisor -> advisor
+                            .param(
+                                    ChatMemory.CONVERSATION_ID,
+                                    conversationId
+                            )
+                    )
                     .call()
                     .entity(CodeReview.class);
 
