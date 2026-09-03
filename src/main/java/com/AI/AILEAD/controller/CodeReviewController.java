@@ -17,23 +17,23 @@ import java.nio.charset.StandardCharsets;
 @RequestMapping("/review")
 public class CodeReviewController {
 
-    private final CodeReviewService codeReviewServiceImpl;
+    private final CodeReviewService codeReviewService;
     private final FileValidator fileValidator;
 
     public CodeReviewController(CodeReviewServiceImpl service, FileValidator fileValidator) {
-        this.codeReviewServiceImpl = service;
+        this.codeReviewService = service;
         this.fileValidator = fileValidator;
     }
 
     @PostMapping
     public CodeReview review(@RequestBody ReviewRequest request) {
 
-        return codeReviewServiceImpl.review(request.code());
+        return codeReviewService.review(request.code());
 
     }
 
     @PostMapping(
-            value = "/file",
+            value = "/file/???",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<CodeReview> reviewJavaFile(
@@ -46,7 +46,30 @@ public class CodeReviewController {
                 new String(file.getBytes(), StandardCharsets.UTF_8);
 
         return ResponseEntity.ok(
-                codeReviewServiceImpl.review(sourceCode)
+                codeReviewService.review(sourceCode)
+        );
+    }
+
+    @PostMapping(
+            value = "/file",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public CodeReview reviewFile(
+            @RequestParam MultipartFile file,
+            @RequestParam String conversationId)
+            throws IOException {
+
+        fileValidator.validate(file);
+
+        String sourceCode =
+                new String(
+                        file.getBytes(),
+                        StandardCharsets.UTF_8
+                );
+
+        return codeReviewService.review(
+                sourceCode,
+                conversationId
         );
     }
 
