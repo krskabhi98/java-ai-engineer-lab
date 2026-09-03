@@ -23,17 +23,18 @@ ext {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+
 	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
-//	implementation 'org.springframework.ai:spring-ai-starter-model-vertex-ai-embedding'
 
-//    implementation 'org.springframework.ai:spring-ai-bom:${spring-ai.version}'
-
-    implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
-
-    implementation("org.projectlombok:lombok:1.18.46")
-    implementation("org.apache.logging.log4j:log4j-core:3.0.0-beta3")
 	implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory'
-	//testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc'
+
+	implementation 'org.postgresql:postgresql'
+
+	implementation("org.projectlombok:lombok:1.18.46")
+	implementation("org.apache.logging.log4j:log4j-core:3.0.0-beta3")
+
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

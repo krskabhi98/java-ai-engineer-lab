@@ -1,11 +1,20 @@
 spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ailead
+    username: ailead
+    password: ailead_password
+    driver-class-name: org.postgresql.Driver
   ai:
     model:
       chat: google-genai
-
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
     google:
       genai:
-        api-key: ${GOOGLE_GENAI_API_KEY}
+        api-key: ${Key-Token}
         chat:
           options:
             model: gemini-3.5-flash
