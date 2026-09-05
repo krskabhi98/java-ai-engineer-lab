@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ailead-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ailead
+      POSTGRES_USER: ailead
+      POSTGRES_PASSWORD: ailead_password
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - ailead-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  ailead-postgres-data:
