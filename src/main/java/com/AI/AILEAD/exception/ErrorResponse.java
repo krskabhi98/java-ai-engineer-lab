@@ -1,17 +1,19 @@
 package com.AI.AILEAD.exception;
 
-import java.time.LocalDateTime;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-public record ErrorResponse(
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ErrorResponse {
 
-        LocalDateTime timestamp,
-
-        int status,
-
-        String error,
-
-        String message,
-
-        String path
-
-) {}
+    private String timestamp;
+    private int status;
+    private String error;
+    private String message;
+    private String path;
+}
