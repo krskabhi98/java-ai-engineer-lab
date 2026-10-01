@@ -14,7 +14,7 @@ spring:
             initialize-schema: always
     google:
       genai:
-        api-key: ${Key-Token}
+        api-key: ${GOOGLE_GENAI_API_KEY}
         chat:
           options:
             model: gemini-3.5-flash
