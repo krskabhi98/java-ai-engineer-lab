@@ -66,21 +66,28 @@ pipeline {
             steps {
                 sshagent(['ailead-ec2-ssh']) {
                     sh '''
+                        echo "Deploying AILEAD version ${APP_VERSION}"
+
+                        echo "Copying artifact to AILEAD EC2..."
+
                         scp -o StrictHostKeyChecking=no \
                             "ailead-${APP_VERSION}.jar" \
                             ${AILEAD_USER}@${AILEAD_HOST}:/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-${APP_VERSION}.jar
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            "sudo sed -i 's#build/libs/ailead-[^ ]*\\.jar#build/libs/ailead-${APP_VERSION}.jar#' /etc/systemd/system/ailead.service"
+                        echo "Updating current application symlink..."
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
-                            'sudo systemctl daemon-reload'
+                            "cd /home/ec2-user/java-ai-engineer-lab/build/libs && \
+                             ln -sfn ailead-${APP_VERSION}.jar ailead-current.jar"
+
+                        echo "Restarting AILEAD service..."
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
                             'sudo systemctl restart ailead'
+
+                        echo "Deployment command completed."
                     '''
                 }
             }
@@ -90,13 +97,33 @@ pipeline {
             steps {
                 sshagent(['ailead-ec2-ssh']) {
                     sh '''
+                        echo "Verifying deployment..."
+
+                        echo "Checking systemd service..."
+
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
                             "systemctl is-active --quiet ailead"
 
+                        echo "Checking current symlink..."
+
+                        CURRENT_JAR=$(ssh -o StrictHostKeyChecking=no \
+                            ${AILEAD_USER}@${AILEAD_HOST} \
+                            "readlink /home/ec2-user/java-ai-engineer-lab/build/libs/ailead-current.jar")
+
+                        echo "Current JAR: ${CURRENT_JAR}"
+
+                        if [ "${CURRENT_JAR}" != "ailead-${APP_VERSION}.jar" ]; then
+                            echo "ERROR: Symlink points to ${CURRENT_JAR}"
+                            echo "Expected: ailead-${APP_VERSION}.jar"
+                            exit 1
+                        fi
+
+                        echo "Checking running application process..."
+
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
-                            "pgrep -f 'ailead-${APP_VERSION}.jar' > /dev/null"
+                            "pgrep -f 'ailead-current.jar' > /dev/null"
 
                         echo "Deployment verification successful."
                         echo "Running version: ${APP_VERSION}"
