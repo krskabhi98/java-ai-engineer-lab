@@ -1,11 +1,12 @@
-//AWS deployemnt
 pipeline {
     agent any
 
     environment {
+        APP_VERSION = '1.0.1'
+
         AILEAD_HOST = '172.31.44.91'
         AILEAD_USER = 'ec2-user'
-        AILEAD_JAR = '/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-1.0.1.jar'
+        AILEAD_JAR = "/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-${APP_VERSION}.jar"
 
         NEXUS_URL = 'http://172.31.43.26:8081'
         NEXUS_REPOSITORY = 'ailead-maven-releases'
@@ -44,8 +45,8 @@ pipeline {
                 ]) {
                     sh '''
                         curl -f -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
-                            -o ailead-1.0.1.jar \
-                            "${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/com/AI/ailead/1.0.1/ailead-1.0.1.jar"
+                            -o "ailead-${APP_VERSION}.jar" \
+                            "${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/com/AI/ailead/${APP_VERSION}/ailead-${APP_VERSION}.jar"
                     '''
                 }
             }
@@ -56,16 +57,28 @@ pipeline {
                 sshagent(['ailead-ec2-ssh']) {
                     sh '''
                         scp -o StrictHostKeyChecking=no \
-                            ailead-1.0.1.jar \
+                            "ailead-${APP_VERSION}.jar" \
                             ${AILEAD_USER}@${AILEAD_HOST}:${AILEAD_JAR}
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
                             'sudo systemctl restart ailead'
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sshagent(['ailead-ec2-ssh']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no \
+                            ${AILEAD_USER}@${AILEAD_HOST} \
+                            "systemctl is-active --quiet ailead"
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
-                            'systemctl is-active --quiet ailead'
+                            "pgrep -f 'ailead-${APP_VERSION}.jar' > /dev/null"
                     '''
                 }
             }
