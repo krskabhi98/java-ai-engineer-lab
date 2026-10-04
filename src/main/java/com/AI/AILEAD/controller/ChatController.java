@@ -17,6 +17,11 @@ public class ChatController {
         this.chatService = chatService;
     }
 
+       @GetMapping("/test")
+    public String testEndpoint() {
+        return "Controller is working perfectly!";
+    }
+    
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
