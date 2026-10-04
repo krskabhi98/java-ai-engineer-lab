@@ -2,17 +2,27 @@ pipeline {
     agent any
 
     environment {
-        APP_VERSION = '1.0.1'
-
         AILEAD_HOST = '172.31.44.91'
         AILEAD_USER = 'ec2-user'
-        AILEAD_JAR = "/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-${APP_VERSION}.jar"
 
         NEXUS_URL = 'http://172.31.43.26:8081'
         NEXUS_REPOSITORY = 'ailead-maven-releases'
     }
 
     stages {
+
+        stage('Get Application Version') {
+            steps {
+                script {
+                    env.APP_VERSION = sh(
+                        script: "./gradlew properties -q | grep '^version:' | awk '{print \$2}'",
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Application version: ${env.APP_VERSION}"
+                }
+            }
+        }
 
         stage('Build') {
             steps {
@@ -58,7 +68,15 @@ pipeline {
                     sh '''
                         scp -o StrictHostKeyChecking=no \
                             "ailead-${APP_VERSION}.jar" \
-                            ${AILEAD_USER}@${AILEAD_HOST}:${AILEAD_JAR}
+                            ${AILEAD_USER}@${AILEAD_HOST}:/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-${APP_VERSION}.jar
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${AILEAD_USER}@${AILEAD_HOST} \
+                            "sudo sed -i 's#build/libs/ailead-[^ ]*\\.jar#build/libs/ailead-${APP_VERSION}.jar#' /etc/systemd/system/ailead.service"
+
+                        ssh -o StrictHostKeyChecking=no \
+                            ${AILEAD_USER}@${AILEAD_HOST} \
+                            'sudo systemctl daemon-reload'
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
@@ -79,6 +97,9 @@ pipeline {
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
                             "pgrep -f 'ailead-${APP_VERSION}.jar' > /dev/null"
+
+                        echo "Deployment verification successful."
+                        echo "Running version: ${APP_VERSION}"
                     '''
                 }
             }
