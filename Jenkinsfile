@@ -22,7 +22,7 @@ pipeline {
             steps {
                 script {
                     env.APP_VERSION = sh(
-                        script: "./gradlew properties -q | grep '^version:' | awk '{print \\$2}'",
+                        script: "./gradlew properties -q | grep '^version:' | cut -d' ' -f2",
                         returnStdout: true
                     ).trim()
 
