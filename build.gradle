@@ -1,108 +1,75 @@
-pipeline {
-    agent any
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.7'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'maven-publish'
+}
 
-    environment {
-        AILEAD_HOST = '172.31.44.91'
-        AILEAD_USER = 'ec2-user'
+group = 'com.AI'
+version = '1.0.3'
 
-        NEXUS_URL = 'http://172.31.43.26:8081'
-        NEXUS_REPOSITORY = 'ailead-maven-releases'
-    }
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
 
-    stages {
+repositories {
+	mavenCentral()
+}
 
-        stage('Get Application Version') {
-            steps {
-                script {
-                    env.APP_VERSION = sh(
-                        script: "./gradlew properties -q | grep '^version:' | awk '{print \$2}'",
-                        returnStdout: true
-                    ).trim()
+ext {
+	set('springAiVersion', "2.0.0")
+}
 
-                    echo "Application version: ${env.APP_VERSION}"
-                }
-            }
-        }
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 
-        stage('Build') {
-            steps {
-                sh './gradlew clean build'
-            }
-        }
+	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
 
-        stage('Publish to Nexus') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'nexus-jenkins-credentials',
-                        usernameVariable: 'NEXUS_USERNAME',
-                        passwordVariable: 'NEXUS_PASSWORD'
-                    )
-                ]) {
-                    sh './gradlew publish'
-                }
-            }
-        }
+	implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory'
+	implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc'
 
-        stage('Download Artifact') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'nexus-jenkins-credentials',
-                        usernameVariable: 'NEXUS_USERNAME',
-                        passwordVariable: 'NEXUS_PASSWORD'
-                    )
-                ]) {
-                    sh '''
-                        curl -f -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
-                            -o "ailead-${APP_VERSION}.jar" \
-                            "${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/com/AI/ailead/${APP_VERSION}/ailead-${APP_VERSION}.jar"
-                    '''
-                }
-            }
-        }
+	implementation 'org.postgresql:postgresql'
 
-        stage('Deploy') {
-            steps {
-                sshagent(['ailead-ec2-ssh']) {
-                    sh '''
-                        scp -o StrictHostKeyChecking=no \
-                            "ailead-${APP_VERSION}.jar" \
-                            ${AILEAD_USER}@${AILEAD_HOST}:/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-${APP_VERSION}.jar
+	compileOnly 'org.projectlombok:lombok:1.18.46'
+	annotationProcessor 'org.projectlombok:lombok:1.18.46'
+	implementation 'org.apache.logging.log4j:log4j-core:3.0.0-beta3'
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            "sudo sed -i 's#build/libs/ailead-[^ ]*\\.jar#build/libs/ailead-${APP_VERSION}.jar#' /etc/systemd/system/ailead.service"
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            'sudo systemctl daemon-reload'
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+	}
+}
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            'sudo systemctl restart ailead'
-                    '''
-                }
-            }
-        }
+tasks.named('test') {
+	useJUnitPlatform()
+}
 
-        stage('Verify Deployment') {
-            steps {
-                sshagent(['ailead-ec2-ssh']) {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            "systemctl is-active --quiet ailead"
+publishing {
+	repositories {
+		maven {
+			name = 'nexus'
+			url = uri('http://172.31.43.26:8081/repository/ailead-maven-releases/')
+			allowInsecureProtocol = true
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            "pgrep -f 'ailead-${APP_VERSION}.jar' > /dev/null"
+			credentials {
+				username = findProperty('nexusUsername') ?: System.getenv('NEXUS_USERNAME')
+				password = findProperty('nexusPassword') ?: System.getenv('NEXUS_PASSWORD')
+			}
+		}
+	}
 
-                        echo "Deployment verification successful."
-                        echo "Running version: ${APP_VERSION}"
-                    '''
-                }
-            }
-        }
-    }
+	publications {
+		maven(MavenPublication) {
+			artifact(tasks.named('bootJar'))
+			groupId = project.group
+			artifactId = 'ailead'
+			version = project.version
+		}
+	}
 }
