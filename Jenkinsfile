@@ -2,11 +2,18 @@ pipeline {
     agent any
 
     environment {
+        // Application
         AILEAD_HOST = '172.31.44.91'
         AILEAD_USER = 'ec2-user'
 
+        // Nexus
         NEXUS_URL = 'http://172.31.43.26:8081'
         NEXUS_REPOSITORY = 'ailead-maven-releases'
+
+        // AWS / ECR
+        AWS_REGION = 'ap-southeast-2'
+        ECR_REGISTRY = '958280224408.dkr.ecr.ap-southeast-2.amazonaws.com'
+        ECR_REPOSITORY = 'ailead'
     }
 
     stages {
@@ -15,7 +22,7 @@ pipeline {
             steps {
                 script {
                     env.APP_VERSION = sh(
-                        script: "./gradlew properties -q | grep '^version:' | awk '{print \$2}'",
+                        script: "./gradlew properties -q | grep '^version:' | awk '{print \\$2}'",
                         returnStdout: true
                     ).trim()
 
@@ -62,33 +69,118 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Docker Build') {
             steps {
-                sshagent(['ailead-ec2-ssh']) {
-                    sh '''
-                        echo "Deploying AILEAD version ${APP_VERSION}"
+                sh '''
+                    echo "Building Docker image..."
 
-                        echo "Copying artifact to AILEAD EC2..."
+                    docker build \
+                        --build-arg JAR_FILE="ailead-${APP_VERSION}.jar" \
+                        -t "${ECR_REGISTRY}/${ECR_REPOSITORY}:${APP_VERSION}" \
+                        .
 
-                        scp -o StrictHostKeyChecking=no \
-                            "ailead-${APP_VERSION}.jar" \
-                            ${AILEAD_USER}@${AILEAD_HOST}:/home/ec2-user/java-ai-engineer-lab/build/libs/ailead-${APP_VERSION}.jar
+                    echo "Docker image built successfully."
 
-                        echo "Updating current application symlink..."
+                    docker images \
+                        "${ECR_REGISTRY}/${ECR_REPOSITORY}:${APP_VERSION}"
+                '''
+            }
+        }
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            "cd /home/ec2-user/java-ai-engineer-lab/build/libs && \
-                             ln -sfn ailead-${APP_VERSION}.jar ailead-current.jar"
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                    echo "Logging in to Amazon ECR..."
 
-                        echo "Restarting AILEAD service..."
+                    aws ecr get-login-password \
+                        --region "${AWS_REGION}" | \
+                        docker login \
+                        --username AWS \
+                        --password-stdin "${ECR_REGISTRY}"
 
-                        ssh -o StrictHostKeyChecking=no \
-                            ${AILEAD_USER}@${AILEAD_HOST} \
-                            'sudo systemctl restart ailead'
+                    echo "Pushing image to ECR..."
 
-                        echo "Deployment command completed."
-                    '''
+                    docker push \
+                        "${ECR_REGISTRY}/${ECR_REPOSITORY}:${APP_VERSION}"
+
+                    echo "Image pushed successfully."
+                '''
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'google-genai-api-key',
+                        variable: 'GOOGLE_GENAI_API_KEY'
+                    )
+                ]) {
+                    sshagent(['ailead-ec2-ssh']) {
+                        sh '''
+                            echo "Deploying AILEAD version ${APP_VERSION}..."
+
+                            echo "Preparing Docker network..."
+
+                            ssh -o StrictHostKeyChecking=no \
+                                ${AILEAD_USER}@${AILEAD_HOST} \
+                                "docker network inspect ailead-net >/dev/null 2>&1 || docker network create ailead-net"
+
+                            echo "Logging in to ECR on AILEAD EC2..."
+
+                            ssh -o StrictHostKeyChecking=no \
+                                ${AILEAD_USER}@${AILEAD_HOST} \
+                                "aws ecr get-login-password \
+                                --region ${AWS_REGION} | \
+                                docker login \
+                                --username AWS \
+                                --password-stdin ${ECR_REGISTRY}"
+
+                            echo "Pulling image from ECR..."
+
+                            ssh -o StrictHostKeyChecking=no \
+                                ${AILEAD_USER}@${AILEAD_HOST} \
+                                "docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${APP_VERSION}"
+
+                            echo "Preparing application secret..."
+
+                            printf 'GOOGLE_GENAI_API_KEY=%s\\n' "${GOOGLE_GENAI_API_KEY}" | \
+                                ssh -o StrictHostKeyChecking=no \
+                                ${AILEAD_USER}@${AILEAD_HOST} \
+                                'cat > /tmp/ailead.env && chmod 600 /tmp/ailead.env'
+
+                            cleanup_secret() {
+                                echo "Cleaning up temporary secret..."
+
+                                ssh -o StrictHostKeyChecking=no \
+                                    ${AILEAD_USER}@${AILEAD_HOST} \
+                                    "rm -f /tmp/ailead.env"
+                            }
+
+                            trap cleanup_secret EXIT
+
+                            echo "Stopping previous AILEAD container..."
+
+                            ssh -o StrictHostKeyChecking=no \
+                                ${AILEAD_USER}@${AILEAD_HOST} \
+                                "docker rm -f ailead >/dev/null 2>&1 || true"
+
+                            echo "Starting new AILEAD container..."
+
+                            ssh -o StrictHostKeyChecking=no \
+                                ${AILEAD_USER}@${AILEAD_HOST} \
+                                "docker run -d \
+                                    --name ailead \
+                                    --network ailead-net \
+                                    --env-file /tmp/ailead.env \
+                                    -e DB_URL=jdbc:postgresql://ailead-postgres:5432/ailead \
+                                    -p 8080:8080 \
+                                    --restart unless-stopped \
+                                    ${ECR_REGISTRY}/${ECR_REPOSITORY}:${APP_VERSION}"
+
+                            echo "Deployment completed."
+                        '''
+                    }
                 }
             }
         }
@@ -99,31 +191,40 @@ pipeline {
                     sh '''
                         echo "Verifying deployment..."
 
-                        echo "Checking systemd service..."
+                        echo "Checking Docker container..."
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
-                            "systemctl is-active --quiet ailead"
+                            "docker ps --filter name=ailead --format '{{.Names}} {{.Status}}'"
 
-                        echo "Checking current symlink..."
+                        echo "Checking container is running..."
 
-                        CURRENT_JAR=$(ssh -o StrictHostKeyChecking=no \
+                        ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
-                            "readlink /home/ec2-user/java-ai-engineer-lab/build/libs/ailead-current.jar")
+                            "docker inspect -f '{{.State.Running}}' ailead" | grep -q true
 
-                        echo "Current JAR: ${CURRENT_JAR}"
+                        echo "Checking deployed image..."
 
-                        if [ "${CURRENT_JAR}" != "ailead-${APP_VERSION}.jar" ]; then
-                            echo "ERROR: Symlink points to ${CURRENT_JAR}"
-                            echo "Expected: ailead-${APP_VERSION}.jar"
+                        RUNNING_IMAGE=$(ssh -o StrictHostKeyChecking=no \
+                            ${AILEAD_USER}@${AILEAD_HOST} \
+                            "docker inspect -f '{{.Config.Image}}' ailead")
+
+                        echo "Running image: ${RUNNING_IMAGE}"
+
+                        EXPECTED_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${APP_VERSION}"
+
+                        if [ "${RUNNING_IMAGE}" != "${EXPECTED_IMAGE}" ]; then
+                            echo "ERROR: Wrong image running."
+                            echo "Expected: ${EXPECTED_IMAGE}"
+                            echo "Actual:   ${RUNNING_IMAGE}"
                             exit 1
                         fi
 
-                        echo "Checking running application process..."
+                        echo "Checking application logs..."
 
                         ssh -o StrictHostKeyChecking=no \
                             ${AILEAD_USER}@${AILEAD_HOST} \
-                            "pgrep -f 'ailead-current.jar' > /dev/null"
+                            "docker logs --tail 30 ailead"
 
                         echo "Deployment verification successful."
                         echo "Running version: ${APP_VERSION}"
